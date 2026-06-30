@@ -1,15 +1,12 @@
 // ============================================
-// 🎨 BRONX IMAGE AI V5.0 – CUSTOM DOMAIN
-// Sab images teri website se proxy!
+// 🎨 BRONX IMAGE AI API V3.1 – HIDDEN SOURCE
+// Real API URL completely hidden!
 // ============================================
 const express = require('express');
 const axios = require('axios');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const CREDIT = "BRONX_ULTRA";
-
-// ============ CUSTOM DOMAIN ============
-const MY_DOMAIN = "bronx-web-api.onrender.com"; // ⬅️ APNI WEBSITE KA NAAM
 
 app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -19,9 +16,15 @@ app.use((req, res, next) => {
 });
 app.use(express.json());
 
-// ============ SOURCE (TOTALLY HIDDEN) ============
+// ============ SOURCE API (HIDDEN) ============
 const AI_IMAGE_SOURCE = "https://image.pollinations.ai/prompt";
 const AI_CHAT_SOURCE = "https://text.pollinations.ai";
+
+// ============ IMAGE GENERATOR (PROXY) ============
+function buildImageUrl(prompt, style = '', w = 1024, h = 1024) {
+    const full = style ? `${prompt}, ${style}` : prompt;
+    return `${AI_IMAGE_SOURCE}/${encodeURIComponent(full)}?width=${w}&height=${h}&nologo=true`;
+}
 
 // ============ HOME DASHBOARD ============
 app.get('/', (req, res) => {
@@ -50,7 +53,7 @@ app.get('/', (req, res) => {
         { i:'😊', n:'Emotion', e:'/emotion?url=IMAGE_URL', d:'Face Analysis', c:'#00bfa5' },
         { i:'👴', n:'Age Detect', e:'/age?url=IMAGE_URL', d:'Guess Age', c:'#795548' },
         { i:'🔍', n:'Objects', e:'/objects?url=IMAGE_URL', d:'Detect Items', c:'#304ffe' },
-        { i:'🖼️', n:'IMG Proxy', e:'/img?prompt=Cat', d:'Direct Image', c:'#ff9100' },
+        { i:'🖼️', n:'IMG to URL', e:'/img-url?prompt=Cat', d:'Get Image', c:'#ff9100' },
     ];
 
     const otherTools = [
@@ -80,7 +83,7 @@ app.get('/', (req, res) => {
 <html lang="en">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-    <title>🎨 BRONX IMAGE AI V5</title>
+    <title>🎨 BRONX IMAGE AI V3.1</title>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         :root{--bg:#000814;--s:rgba(5,15,35,.9);--b:rgba(0,150,255,.06);--t:#d0d8f0}
@@ -113,12 +116,11 @@ app.get('/', (req, res) => {
 </head>
 <body>
 <div class="top">
-    <h1>🎨 BRONX IMAGE AI V5</h1>
-    <p>Custom Domain: ${MY_DOMAIN} • 30 Tools</p>
+    <h1>🎨 BRONX IMAGE AI V3.1</h1>
+    <p>30 Tools • Hidden Source • Your Brand Only</p>
     <div style="margin-top:6px">
-        <span class="badge">🌐 ${MY_DOMAIN}</span>
-        <span class="badge">🎨 10 Styles</span>
-        <span class="badge">✨ 20 More</span>
+        <span class="badge">🔒 Source Hidden</span><span class="badge">🎨 10 Styles</span>
+        <span class="badge">✨ 10 Enhance</span><span class="badge">🤖 10 Utility</span>
     </div>
 </div>
 <div class="container">
@@ -138,117 +140,129 @@ function cm(){document.getElementById('modal').classList.remove('show')}
 });
 
 // ============================================
-// ✅ IMAGE PROXY – TERI WEBSITE SE
+// ✅ PROXY ENDPOINT – DIRECT IMAGE STREAM
 // ============================================
-app.get('/img', async (req, res) => {
+app.get('/img-url', async (req, res) => {
     const prompt = req.query.prompt || 'Beautiful landscape';
-    const imageUrl = req.query.image_url || '';
-    
-    let url;
-    if (imageUrl) {
-        // Enhancement mode – reference image ke saath
-        url = `${AI_IMAGE_SOURCE}/${encodeURIComponent(prompt)}?image_url=${encodeURIComponent(imageUrl)}&width=1024&height=1024&nologo=true`;
-    } else {
-        // Generation mode
-        url = `${AI_IMAGE_SOURCE}/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true`;
-    }
-    
+    const url = buildImageUrl(prompt);
     try {
-        const response = await axios.get(url, { 
-            responseType: 'arraybuffer',
-            timeout: 30000
-        });
-        
+        const response = await axios.get(url, { responseType: 'arraybuffer' });
         res.setHeader('Content-Type', 'image/jpeg');
         res.setHeader('X-Powered-By', 'BRONX ULTRA API');
-        res.setHeader('X-Proxy-Domain', MY_DOMAIN);
-        res.setHeader('Cache-Control', 'public, max-age=3600');
         res.send(Buffer.from(response.data));
-    } catch(e) { 
-        res.status(500).json({ error: "Generation failed, retry" }); 
-    }
+    } catch(e) { res.status(500).json({ error: "Generation failed" }); }
 });
 
 // ============================================
-// 🎨 AI IMAGE STYLES – ALL USE CUSTOM DOMAIN
+// 🎨 AI IMAGE STYLES (10) – HIDDEN SOURCE
 // ============================================
-const styleEndpoints = {
-    image:      '',
-    anime:      ', anime style',
-    '3d':       ', 3D render, octane, ray tracing',
-    sketch:     ', pencil sketch, detailed',
-    watercolor: ', watercolor painting',
-    pixel:      ', pixel art, 8-bit',
-    oil:        ', oil painting, classical',
-    cyberpunk:  ', cyberpunk, neon, rain',
-    steampunk:  ', steampunk, victorian, brass',
-    fantasy:    ', fantasy art, magical, epic',
-};
+app.get('/image', (req, res) => {
+    const p = req.query.prompt || 'Landscape';
+    const H = `${req.protocol}://${req.get('host')}`;
+    res.json({ success: true, prompt: p, image_url: `${H}/img-url?prompt=${encodeURIComponent(p)}`, credit: CREDIT });
+});
 
-Object.entries(styleEndpoints).forEach(([name, style]) => {
-    app.get(`/${name}`, (req, res) => {
-        const prompt = (req.query.prompt || 'Landscape') + style;
-        res.json({
-            success: true,
-            prompt: req.query.prompt || 'Landscape',
-            image_url: `https://${MY_DOMAIN}/img?prompt=${encodeURIComponent(prompt)}`,
-            proxy_domain: MY_DOMAIN,
-            credit: CREDIT
-        });
-    });
+app.get('/anime', (req, res) => {
+    const p = req.query.prompt || 'Samurai';
+    const H = `${req.protocol}://${req.get('host')}`;
+    res.json({ success: true, prompt: p, image_url: `${H}/img-url?prompt=${encodeURIComponent(p + ', anime style')}`, credit: CREDIT });
+});
+
+app.get('/3d', (req, res) => {
+    const p = req.query.prompt || 'Castle';
+    const H = `${req.protocol}://${req.get('host')}`;
+    res.json({ success: true, prompt: p, image_url: `${H}/img-url?prompt=${encodeURIComponent(p + ', 3D render, octane, ray tracing')}`, credit: CREDIT });
+});
+
+app.get('/sketch', (req, res) => {
+    const p = req.query.prompt || 'Portrait';
+    const H = `${req.protocol}://${req.get('host')}`;
+    res.json({ success: true, prompt: p, image_url: `${H}/img-url?prompt=${encodeURIComponent(p + ', pencil sketch, detailed')}`, credit: CREDIT });
+});
+
+app.get('/watercolor', (req, res) => {
+    const p = req.query.prompt || 'Flowers';
+    const H = `${req.protocol}://${req.get('host')}`;
+    res.json({ success: true, prompt: p, image_url: `${H}/img-url?prompt=${encodeURIComponent(p + ', watercolor painting')}`, credit: CREDIT });
+});
+
+app.get('/pixel', (req, res) => {
+    const p = req.query.prompt || 'Mario';
+    const H = `${req.protocol}://${req.get('host')}`;
+    res.json({ success: true, prompt: p, image_url: `${H}/img-url?prompt=${encodeURIComponent(p + ', pixel art, 8-bit')}`, credit: CREDIT });
+});
+
+app.get('/oil', (req, res) => {
+    const p = req.query.prompt || 'Mountain';
+    const H = `${req.protocol}://${req.get('host')}`;
+    res.json({ success: true, prompt: p, image_url: `${H}/img-url?prompt=${encodeURIComponent(p + ', oil painting, classical')}`, credit: CREDIT });
+});
+
+app.get('/cyberpunk', (req, res) => {
+    const p = req.query.prompt || 'Tokyo';
+    const H = `${req.protocol}://${req.get('host')}`;
+    res.json({ success: true, prompt: p, image_url: `${H}/img-url?prompt=${encodeURIComponent(p + ', cyberpunk, neon, rain')}`, credit: CREDIT });
+});
+
+app.get('/steampunk', (req, res) => {
+    const p = req.query.prompt || 'Robot';
+    const H = `${req.protocol}://${req.get('host')}`;
+    res.json({ success: true, prompt: p, image_url: `${H}/img-url?prompt=${encodeURIComponent(p + ', steampunk, victorian, brass')}`, credit: CREDIT });
+});
+
+app.get('/fantasy', (req, res) => {
+    const p = req.query.prompt || 'Elf Castle';
+    const H = `${req.protocol}://${req.get('host')}`;
+    res.json({ success: true, prompt: p, image_url: `${H}/img-url?prompt=${encodeURIComponent(p + ', fantasy, magical, epic')}`, credit: CREDIT });
 });
 
 // ============================================
-// ✨ ENHANCEMENT TOOLS
+// ✨ IMAGE ENHANCEMENT (10)
 // ============================================
 app.get('/upscale', (req, res) => {
     const img = req.query.url || '';
+    const H = `${req.protocol}://${req.get('host')}`;
     if (!img) return res.json({ error: "Missing image URL" });
-    res.json({ success: true, image_url: `https://${MY_DOMAIN}/img?prompt=upscaled+4K+sharp&image_url=${encodeURIComponent(img)}`, domain: MY_DOMAIN, credit: CREDIT });
+    res.json({ success: true, upscaled_url: `${H}/img-url?prompt=upscaled+4K+sharp&image_url=${encodeURIComponent(img)}`, credit: CREDIT });
 });
 
 app.get('/remove-bg', (req, res) => {
     const img = req.query.url || '';
+    const H = `${req.protocol}://${req.get('host')}`;
     if (!img) return res.json({ error: "Missing image URL" });
-    res.json({ success: true, image_url: `https://${MY_DOMAIN}/img?prompt=remove+background+transparent&image_url=${encodeURIComponent(img)}`, domain: MY_DOMAIN, credit: CREDIT });
+    res.json({ success: true, result_url: `${H}/img-url?prompt=remove+background+transparent&image_url=${encodeURIComponent(img)}`, credit: CREDIT });
 });
 
 app.get('/colorize', (req, res) => {
     const img = req.query.url || '';
+    const H = `${req.protocol}://${req.get('host')}`;
     if (!img) return res.json({ error: "Missing image URL" });
-    res.json({ success: true, image_url: `https://${MY_DOMAIN}/img?prompt=colorized+vibrant&image_url=${encodeURIComponent(img)}`, domain: MY_DOMAIN, credit: CREDIT });
+    res.json({ success: true, colorized_url: `${H}/img-url?prompt=colorized+vibrant+realistic&image_url=${encodeURIComponent(img)}`, credit: CREDIT });
 });
 
 app.get('/enhance', (req, res) => {
     const img = req.query.url || '';
+    const H = `${req.protocol}://${req.get('host')}`;
     if (!img) return res.json({ error: "Missing image URL" });
-    res.json({ success: true, image_url: `https://${MY_DOMAIN}/img?prompt=enhanced+HDR+professional&image_url=${encodeURIComponent(img)}`, domain: MY_DOMAIN, credit: CREDIT });
+    res.json({ success: true, enhanced_url: `${H}/img-url?prompt=enhanced+HDR+professional&image_url=${encodeURIComponent(img)}`, credit: CREDIT });
 });
 
 app.get('/blur-bg', (req, res) => {
     const img = req.query.url || '';
+    const H = `${req.protocol}://${req.get('host')}`;
     if (!img) return res.json({ error: "Missing image URL" });
-    res.json({ success: true, image_url: `https://${MY_DOMAIN}/img?prompt=portrait+mode+blurred+bokeh&image_url=${encodeURIComponent(img)}`, domain: MY_DOMAIN, credit: CREDIT });
+    res.json({ success: true, result_url: `${H}/img-url?prompt=portrait+mode+blurred+background+bokeh&image_url=${encodeURIComponent(img)}`, credit: CREDIT });
 });
 
 app.get('/cartoon', (req, res) => {
     const img = req.query.url || '';
+    const H = `${req.protocol}://${req.get('host')}`;
     if (!img) return res.json({ error: "Missing image URL" });
-    res.json({ success: true, image_url: `https://${MY_DOMAIN}/img?prompt=cartoon+style&image_url=${encodeURIComponent(img)}`, domain: MY_DOMAIN, credit: CREDIT });
+    res.json({ success: true, cartoon_url: `${H}/img-url?prompt=cartoon+style+colorful&image_url=${encodeURIComponent(img)}`, credit: CREDIT });
 });
 
-app.get('/logo', (req, res) => {
-    const text = req.query.text || 'BRONX';
-    res.json({ success: true, image_url: `https://${MY_DOMAIN}/img?prompt=professional+logo+${encodeURIComponent(text)}+minimalist`, domain: MY_DOMAIN, credit: CREDIT });
-});
-
-app.get('/thumbnail', (req, res) => {
-    const title = req.query.title || 'Video';
-    res.json({ success: true, image_url: `https://${MY_DOMAIN}/img?prompt=YouTube+thumbnail+${encodeURIComponent(title)}+bold`, domain: MY_DOMAIN, credit: CREDIT });
-});
-
-app.get('/emotion', (req, res) => res.json({ success: true, note: "Face emotion analysis", credit: CREDIT }));
-app.get('/age', (req, res) => res.json({ success: true, note: "Age detection", credit: CREDIT }));
+app.get('/emotion', (req, res) => res.json({ success: true, note: "Face emotion analysis", tool: "DeepAI", credit: CREDIT }));
+app.get('/age', (req, res) => res.json({ success: true, note: "Age detection from photo", tool: "HuggingFace", credit: CREDIT }));
 
 app.get('/objects', async (req, res) => {
     const img = req.query.url || '';
@@ -257,47 +271,64 @@ app.get('/objects', async (req, res) => {
         const r = await axios.post('https://api-inference.huggingface.co/models/facebook/detr-resnet-50', { inputs: img }, { timeout: 15000 });
         const objects = (r.data || []).filter(o => o.score > 0.5).map(o => ({ label: o.label, confidence: Math.round(o.score * 100) + '%' }));
         res.json({ success: true, objects, count: objects.length, credit: CREDIT });
-    } catch(e) { res.json({ objects: [], note: "Retry", credit: CREDIT }); }
+    } catch(e) { res.json({ success: true, objects: [], note: "Retry", credit: CREDIT }); }
 });
 
 // ============================================
-// 🤖 AI CHAT & UTILITY
+// 🤖 AI CHAT & UTILITY (10)
 // ============================================
 app.get('/chat', async (req, res) => {
+    const msg = req.query.msg || 'Hello';
     try {
-        const r = await axios.get(`${AI_CHAT_SOURCE}/${encodeURIComponent(req.query.msg || 'Hello')}?model=openai`);
-        res.json({ success: true, response: r.data, credit: CREDIT });
-    } catch(e) { res.json({ error: e.message }); }
+        const r = await axios.get(`${AI_CHAT_SOURCE}/${encodeURIComponent(msg)}?model=openai`);
+        res.json({ success: true, message: msg, response: r.data, credit: CREDIT });
+    } catch(e) { res.json({ success: false, error: e.message }); }
 });
 
 app.get('/code', async (req, res) => {
+    const prompt = req.query.prompt || 'sort array python';
     try {
-        const r = await axios.get(`${AI_CHAT_SOURCE}/${encodeURIComponent('Write code: ' + (req.query.prompt || 'sort'))}?model=openai`);
-        res.json({ success: true, code: r.data, credit: CREDIT });
-    } catch(e) { res.json({ error: e.message }); }
+        const r = await axios.get(`${AI_CHAT_SOURCE}/${encodeURIComponent('Write code: ' + prompt)}?model=openai`);
+        res.json({ success: true, prompt, code: r.data, credit: CREDIT });
+    } catch(e) { res.json({ success: false }); }
+});
+
+app.get('/logo', (req, res) => {
+    const text = req.query.text || 'BRONX';
+    const H = `${req.protocol}://${req.get('host')}`;
+    res.json({ success: true, logo_url: `${H}/img-url?prompt=professional+logo+${encodeURIComponent(text)}+minimalist+vector`, credit: CREDIT });
+});
+
+app.get('/thumbnail', (req, res) => {
+    const title = req.query.title || 'Video';
+    const H = `${req.protocol}://${req.get('host')}`;
+    res.json({ success: true, thumbnail_url: `${H}/img-url?prompt=YouTube+thumbnail+${encodeURIComponent(title)}+bold+vibrant`, credit: CREDIT });
 });
 
 app.get('/meme', (req, res) => {
-    res.json({ success: true, meme_url: `https://api.memegen.link/images/custom/${encodeURIComponent(req.query.top||'HI')}/${encodeURIComponent(req.query.bottom||'BYE')}.png`, credit: CREDIT });
+    const top = req.query.top || 'HELLO';
+    const bottom = req.query.bottom || 'WORLD';
+    res.json({ success: true, meme_url: `https://api.memegen.link/images/custom/${encodeURIComponent(top)}/${encodeURIComponent(bottom)}.png`, credit: CREDIT });
 });
 
 app.get('/qr', async (req, res) => {
+    const QRCode = require('qrcode');
     try {
-        const QRCode = require('qrcode');
-        res.json({ success: true, qr_image: await QRCode.toDataURL(req.query.text || 'Hello'), credit: CREDIT });
+        const qr = await QRCode.toDataURL(req.query.text || 'Hello');
+        res.json({ success: true, qr_image: qr, credit: CREDIT });
     } catch(e) { res.json({ error: e.message }); }
 });
 
 app.get('/shorten', async (req, res) => {
     try {
-        const r = await axios.get(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(req.query.url||'google.com')}`);
+        const r = await axios.get(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(req.query.url || 'google.com')}`);
         res.json({ success: true, shortened: r.data, credit: CREDIT });
     } catch(e) { res.json({ error: e.message }); }
 });
 
 app.get('/ip', async (req, res) => {
     try {
-        const r = await axios.get(`http://ip-api.com/json/${req.query.ip||'8.8.8.8'}`);
+        const r = await axios.get(`http://ip-api.com/json/${req.query.ip || '8.8.8.8'}`);
         res.json({ success: true, ip: r.data.query, country: r.data.country, city: r.data.city, credit: CREDIT });
     } catch(e) { res.json({ error: e.message }); }
 });
@@ -319,6 +350,6 @@ app.get('/grammar', async (req, res) => {
 });
 
 // ============ TEST ============
-app.get('/test', (req, res) => res.json({ status: "✅ V5.0 ONLINE", domain: MY_DOMAIN, tools: 30, credit: CREDIT }));
+app.get('/test', (req, res) => res.json({ status: "✅ V3.1 ONLINE", tools: 30, source: "HIDDEN", credit: CREDIT }));
 
-app.listen(PORT, '0.0.0.0', () => console.log(`🎨 V5.0 on port ${PORT} | Domain: ${MY_DOMAIN}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`🎨 V3.1 HIDDEN on port ${PORT}`));
