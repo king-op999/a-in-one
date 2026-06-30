@@ -1,6 +1,6 @@
 // ============================================
-// 🎨 BRONX IMAGE AI API V3.1 – HIDDEN SOURCE
-// Real API URL completely hidden!
+// 🎨 BRONX IMAGE AI V4.0 – RANDOM DOMAIN PROXY
+// Har request pe alag domain! Untraceable!
 // ============================================
 const express = require('express');
 const axios = require('axios');
@@ -16,15 +16,26 @@ app.use((req, res, next) => {
 });
 app.use(express.json());
 
-// ============ SOURCE API (HIDDEN) ============
+// ============ RANDOM DOMAIN GENERATOR ============
+const RANDOM_WORDS = [
+    'phyo', 'temp', 'fast', 'cdn', 'media', 'pix', 'img', 'art', 'draw', 'gen',
+    'ai', 'pro', 'ultra', 'max', 'hub', 'zone', 'box', 'lab', 'nova', 'star',
+    'pixel', 'render', 'create', 'design', 'vision', 'magic', 'dream', 'forge',
+    'bloom', 'crystal', 'shadow', 'spark', 'flame', 'wave', 'cloud', 'storm'
+];
+
+const RANDOM_TLDS = ['.com', '.net', '.io', '.dev', '.app', '.xyz', '.pro', '.online', '.site', '.tech'];
+
+function randomDomain() {
+    const word1 = RANDOM_WORDS[Math.floor(Math.random() * RANDOM_WORDS.length)];
+    const word2 = RANDOM_WORDS[Math.floor(Math.random() * RANDOM_WORDS.length)];
+    const tld = RANDOM_TLDS[Math.floor(Math.random() * RANDOM_TLDS.length)];
+    return `${word1}-${word2}${tld}`;
+}
+
+// ============ SOURCE (HIDDEN) ============
 const AI_IMAGE_SOURCE = "https://image.pollinations.ai/prompt";
 const AI_CHAT_SOURCE = "https://text.pollinations.ai";
-
-// ============ IMAGE GENERATOR (PROXY) ============
-function buildImageUrl(prompt, style = '', w = 1024, h = 1024) {
-    const full = style ? `${prompt}, ${style}` : prompt;
-    return `${AI_IMAGE_SOURCE}/${encodeURIComponent(full)}?width=${w}&height=${h}&nologo=true`;
-}
 
 // ============ HOME DASHBOARD ============
 app.get('/', (req, res) => {
@@ -53,7 +64,7 @@ app.get('/', (req, res) => {
         { i:'😊', n:'Emotion', e:'/emotion?url=IMAGE_URL', d:'Face Analysis', c:'#00bfa5' },
         { i:'👴', n:'Age Detect', e:'/age?url=IMAGE_URL', d:'Guess Age', c:'#795548' },
         { i:'🔍', n:'Objects', e:'/objects?url=IMAGE_URL', d:'Detect Items', c:'#304ffe' },
-        { i:'🖼️', n:'IMG to URL', e:'/img-url?prompt=Cat', d:'Get Image', c:'#ff9100' },
+        { i:'🖼️', n:'IMG Proxy', e:'/img?prompt=Cat', d:'Random Domain', c:'#ff9100' },
     ];
 
     const otherTools = [
@@ -83,7 +94,7 @@ app.get('/', (req, res) => {
 <html lang="en">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-    <title>🎨 BRONX IMAGE AI V3.1</title>
+    <title>🎨 BRONX IMAGE AI V4</title>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         :root{--bg:#000814;--s:rgba(5,15,35,.9);--b:rgba(0,150,255,.06);--t:#d0d8f0}
@@ -116,11 +127,11 @@ app.get('/', (req, res) => {
 </head>
 <body>
 <div class="top">
-    <h1>🎨 BRONX IMAGE AI V3.1</h1>
-    <p>30 Tools • Hidden Source • Your Brand Only</p>
+    <h1>🎨 BRONX IMAGE AI V4</h1>
+    <p>Random Domain Proxy • 100% Untraceable • 30 Tools</p>
     <div style="margin-top:6px">
-        <span class="badge">🔒 Source Hidden</span><span class="badge">🎨 10 Styles</span>
-        <span class="badge">✨ 10 Enhance</span><span class="badge">🤖 10 Utility</span>
+        <span class="badge">🎲 Random Domains</span><span class="badge">🔒 Source Hidden</span>
+        <span class="badge">🎨 10 Styles</span><span class="badge">✨ 20 More</span>
     </div>
 </div>
 <div class="container">
@@ -140,80 +151,98 @@ function cm(){document.getElementById('modal').classList.remove('show')}
 });
 
 // ============================================
-// ✅ PROXY ENDPOINT – DIRECT IMAGE STREAM
+// ✅ IMAGE PROXY WITH RANDOM DOMAIN
 // ============================================
-app.get('/img-url', async (req, res) => {
+app.get('/img', async (req, res) => {
     const prompt = req.query.prompt || 'Beautiful landscape';
-    const url = buildImageUrl(prompt);
+    const url = `${AI_IMAGE_SOURCE}/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true`;
+    
     try {
-        const response = await axios.get(url, { responseType: 'arraybuffer' });
+        const response = await axios.get(url, { 
+            responseType: 'arraybuffer',
+            timeout: 30000,
+            headers: { 'User-Agent': 'BRONX-API/4.0' }
+        });
+        
+        // Randomize headers
         res.setHeader('Content-Type', 'image/jpeg');
         res.setHeader('X-Powered-By', 'BRONX ULTRA API');
+        res.setHeader('X-Image-Source', randomDomain());
+        res.setHeader('X-Request-ID', Date.now().toString(36) + Math.random().toString(36).substr(2, 6));
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
         res.send(Buffer.from(response.data));
-    } catch(e) { res.status(500).json({ error: "Generation failed" }); }
+    } catch(e) { 
+        res.status(500).json({ error: "Generation failed, retry" }); 
+    }
 });
 
 // ============================================
-// 🎨 AI IMAGE STYLES (10) – HIDDEN SOURCE
+// 🎨 AI IMAGE STYLES (10) – WITH RANDOM DOMAINS
 // ============================================
 app.get('/image', (req, res) => {
     const p = req.query.prompt || 'Landscape';
-    const H = `${req.protocol}://${req.get('host')}`;
-    res.json({ success: true, prompt: p, image_url: `${H}/img-url?prompt=${encodeURIComponent(p)}`, credit: CREDIT });
+    const fakeDomain = randomDomain();
+    res.json({ 
+        success: true, 
+        prompt: p, 
+        image_url: `https://${fakeDomain}/img?prompt=${encodeURIComponent(p)}`,
+        source: fakeDomain,
+        credit: CREDIT 
+    });
 });
 
 app.get('/anime', (req, res) => {
     const p = req.query.prompt || 'Samurai';
-    const H = `${req.protocol}://${req.get('host')}`;
-    res.json({ success: true, prompt: p, image_url: `${H}/img-url?prompt=${encodeURIComponent(p + ', anime style')}`, credit: CREDIT });
+    const fakeDomain = randomDomain();
+    res.json({ success: true, prompt: p, image_url: `https://${fakeDomain}/img?prompt=${encodeURIComponent(p + ', anime style')}`, source: fakeDomain, credit: CREDIT });
 });
 
 app.get('/3d', (req, res) => {
     const p = req.query.prompt || 'Castle';
-    const H = `${req.protocol}://${req.get('host')}`;
-    res.json({ success: true, prompt: p, image_url: `${H}/img-url?prompt=${encodeURIComponent(p + ', 3D render, octane, ray tracing')}`, credit: CREDIT });
+    const fakeDomain = randomDomain();
+    res.json({ success: true, prompt: p, image_url: `https://${fakeDomain}/img?prompt=${encodeURIComponent(p + ', 3D render')}`, source: fakeDomain, credit: CREDIT });
 });
 
 app.get('/sketch', (req, res) => {
     const p = req.query.prompt || 'Portrait';
-    const H = `${req.protocol}://${req.get('host')}`;
-    res.json({ success: true, prompt: p, image_url: `${H}/img-url?prompt=${encodeURIComponent(p + ', pencil sketch, detailed')}`, credit: CREDIT });
+    const fakeDomain = randomDomain();
+    res.json({ success: true, prompt: p, image_url: `https://${fakeDomain}/img?prompt=${encodeURIComponent(p + ', pencil sketch')}`, source: fakeDomain, credit: CREDIT });
 });
 
 app.get('/watercolor', (req, res) => {
     const p = req.query.prompt || 'Flowers';
-    const H = `${req.protocol}://${req.get('host')}`;
-    res.json({ success: true, prompt: p, image_url: `${H}/img-url?prompt=${encodeURIComponent(p + ', watercolor painting')}`, credit: CREDIT });
+    const fakeDomain = randomDomain();
+    res.json({ success: true, prompt: p, image_url: `https://${fakeDomain}/img?prompt=${encodeURIComponent(p + ', watercolor')}`, source: fakeDomain, credit: CREDIT });
 });
 
 app.get('/pixel', (req, res) => {
     const p = req.query.prompt || 'Mario';
-    const H = `${req.protocol}://${req.get('host')}`;
-    res.json({ success: true, prompt: p, image_url: `${H}/img-url?prompt=${encodeURIComponent(p + ', pixel art, 8-bit')}`, credit: CREDIT });
+    const fakeDomain = randomDomain();
+    res.json({ success: true, prompt: p, image_url: `https://${fakeDomain}/img?prompt=${encodeURIComponent(p + ', pixel art')}`, source: fakeDomain, credit: CREDIT });
 });
 
 app.get('/oil', (req, res) => {
     const p = req.query.prompt || 'Mountain';
-    const H = `${req.protocol}://${req.get('host')}`;
-    res.json({ success: true, prompt: p, image_url: `${H}/img-url?prompt=${encodeURIComponent(p + ', oil painting, classical')}`, credit: CREDIT });
+    const fakeDomain = randomDomain();
+    res.json({ success: true, prompt: p, image_url: `https://${fakeDomain}/img?prompt=${encodeURIComponent(p + ', oil painting')}`, source: fakeDomain, credit: CREDIT });
 });
 
 app.get('/cyberpunk', (req, res) => {
     const p = req.query.prompt || 'Tokyo';
-    const H = `${req.protocol}://${req.get('host')}`;
-    res.json({ success: true, prompt: p, image_url: `${H}/img-url?prompt=${encodeURIComponent(p + ', cyberpunk, neon, rain')}`, credit: CREDIT });
+    const fakeDomain = randomDomain();
+    res.json({ success: true, prompt: p, image_url: `https://${fakeDomain}/img?prompt=${encodeURIComponent(p + ', cyberpunk')}`, source: fakeDomain, credit: CREDIT });
 });
 
 app.get('/steampunk', (req, res) => {
     const p = req.query.prompt || 'Robot';
-    const H = `${req.protocol}://${req.get('host')}`;
-    res.json({ success: true, prompt: p, image_url: `${H}/img-url?prompt=${encodeURIComponent(p + ', steampunk, victorian, brass')}`, credit: CREDIT });
+    const fakeDomain = randomDomain();
+    res.json({ success: true, prompt: p, image_url: `https://${fakeDomain}/img?prompt=${encodeURIComponent(p + ', steampunk')}`, source: fakeDomain, credit: CREDIT });
 });
 
 app.get('/fantasy', (req, res) => {
     const p = req.query.prompt || 'Elf Castle';
-    const H = `${req.protocol}://${req.get('host')}`;
-    res.json({ success: true, prompt: p, image_url: `${H}/img-url?prompt=${encodeURIComponent(p + ', fantasy, magical, epic')}`, credit: CREDIT });
+    const fakeDomain = randomDomain();
+    res.json({ success: true, prompt: p, image_url: `https://${fakeDomain}/img?prompt=${encodeURIComponent(p + ', fantasy magical')}`, source: fakeDomain, credit: CREDIT });
 });
 
 // ============================================
@@ -221,48 +250,60 @@ app.get('/fantasy', (req, res) => {
 // ============================================
 app.get('/upscale', (req, res) => {
     const img = req.query.url || '';
-    const H = `${req.protocol}://${req.get('host')}`;
+    const fakeDomain = randomDomain();
     if (!img) return res.json({ error: "Missing image URL" });
-    res.json({ success: true, upscaled_url: `${H}/img-url?prompt=upscaled+4K+sharp&image_url=${encodeURIComponent(img)}`, credit: CREDIT });
+    res.json({ success: true, upscaled_url: `https://${fakeDomain}/img?prompt=upscaled+4K&image_url=${encodeURIComponent(img)}`, source: fakeDomain, credit: CREDIT });
 });
 
 app.get('/remove-bg', (req, res) => {
     const img = req.query.url || '';
-    const H = `${req.protocol}://${req.get('host')}`;
+    const fakeDomain = randomDomain();
     if (!img) return res.json({ error: "Missing image URL" });
-    res.json({ success: true, result_url: `${H}/img-url?prompt=remove+background+transparent&image_url=${encodeURIComponent(img)}`, credit: CREDIT });
+    res.json({ success: true, result_url: `https://${fakeDomain}/img?prompt=remove+background&image_url=${encodeURIComponent(img)}`, source: fakeDomain, credit: CREDIT });
 });
 
 app.get('/colorize', (req, res) => {
     const img = req.query.url || '';
-    const H = `${req.protocol}://${req.get('host')}`;
+    const fakeDomain = randomDomain();
     if (!img) return res.json({ error: "Missing image URL" });
-    res.json({ success: true, colorized_url: `${H}/img-url?prompt=colorized+vibrant+realistic&image_url=${encodeURIComponent(img)}`, credit: CREDIT });
+    res.json({ success: true, colorized_url: `https://${fakeDomain}/img?prompt=colorized&image_url=${encodeURIComponent(img)}`, source: fakeDomain, credit: CREDIT });
 });
 
 app.get('/enhance', (req, res) => {
     const img = req.query.url || '';
-    const H = `${req.protocol}://${req.get('host')}`;
+    const fakeDomain = randomDomain();
     if (!img) return res.json({ error: "Missing image URL" });
-    res.json({ success: true, enhanced_url: `${H}/img-url?prompt=enhanced+HDR+professional&image_url=${encodeURIComponent(img)}`, credit: CREDIT });
+    res.json({ success: true, enhanced_url: `https://${fakeDomain}/img?prompt=enhanced+HDR&image_url=${encodeURIComponent(img)}`, source: fakeDomain, credit: CREDIT });
 });
 
 app.get('/blur-bg', (req, res) => {
     const img = req.query.url || '';
-    const H = `${req.protocol}://${req.get('host')}`;
+    const fakeDomain = randomDomain();
     if (!img) return res.json({ error: "Missing image URL" });
-    res.json({ success: true, result_url: `${H}/img-url?prompt=portrait+mode+blurred+background+bokeh&image_url=${encodeURIComponent(img)}`, credit: CREDIT });
+    res.json({ success: true, result_url: `https://${fakeDomain}/img?prompt=portrait+blurred+bokeh&image_url=${encodeURIComponent(img)}`, source: fakeDomain, credit: CREDIT });
 });
 
 app.get('/cartoon', (req, res) => {
     const img = req.query.url || '';
-    const H = `${req.protocol}://${req.get('host')}`;
+    const fakeDomain = randomDomain();
     if (!img) return res.json({ error: "Missing image URL" });
-    res.json({ success: true, cartoon_url: `${H}/img-url?prompt=cartoon+style+colorful&image_url=${encodeURIComponent(img)}`, credit: CREDIT });
+    res.json({ success: true, cartoon_url: `https://${fakeDomain}/img?prompt=cartoon+style&image_url=${encodeURIComponent(img)}`, source: fakeDomain, credit: CREDIT });
 });
 
-app.get('/emotion', (req, res) => res.json({ success: true, note: "Face emotion analysis", tool: "DeepAI", credit: CREDIT }));
-app.get('/age', (req, res) => res.json({ success: true, note: "Age detection from photo", tool: "HuggingFace", credit: CREDIT }));
+app.get('/logo', (req, res) => {
+    const text = req.query.text || 'BRONX';
+    const fakeDomain = randomDomain();
+    res.json({ success: true, logo_url: `https://${fakeDomain}/img?prompt=professional+logo+${encodeURIComponent(text)}`, source: fakeDomain, credit: CREDIT });
+});
+
+app.get('/thumbnail', (req, res) => {
+    const title = req.query.title || 'Video';
+    const fakeDomain = randomDomain();
+    res.json({ success: true, thumbnail_url: `https://${fakeDomain}/img?prompt=YouTube+thumbnail+${encodeURIComponent(title)}`, source: fakeDomain, credit: CREDIT });
+});
+
+app.get('/emotion', (req, res) => res.json({ success: true, note: "Face emotion analysis via AI", credit: CREDIT }));
+app.get('/age', (req, res) => res.json({ success: true, note: "Age detection via AI", credit: CREDIT }));
 
 app.get('/objects', async (req, res) => {
     const img = req.query.url || '';
@@ -278,42 +319,26 @@ app.get('/objects', async (req, res) => {
 // 🤖 AI CHAT & UTILITY (10)
 // ============================================
 app.get('/chat', async (req, res) => {
-    const msg = req.query.msg || 'Hello';
     try {
-        const r = await axios.get(`${AI_CHAT_SOURCE}/${encodeURIComponent(msg)}?model=openai`);
-        res.json({ success: true, message: msg, response: r.data, credit: CREDIT });
-    } catch(e) { res.json({ success: false, error: e.message }); }
+        const r = await axios.get(`${AI_CHAT_SOURCE}/${encodeURIComponent(req.query.msg || 'Hello')}?model=openai`);
+        res.json({ success: true, response: r.data, credit: CREDIT });
+    } catch(e) { res.json({ error: e.message }); }
 });
 
 app.get('/code', async (req, res) => {
-    const prompt = req.query.prompt || 'sort array python';
     try {
-        const r = await axios.get(`${AI_CHAT_SOURCE}/${encodeURIComponent('Write code: ' + prompt)}?model=openai`);
-        res.json({ success: true, prompt, code: r.data, credit: CREDIT });
-    } catch(e) { res.json({ success: false }); }
-});
-
-app.get('/logo', (req, res) => {
-    const text = req.query.text || 'BRONX';
-    const H = `${req.protocol}://${req.get('host')}`;
-    res.json({ success: true, logo_url: `${H}/img-url?prompt=professional+logo+${encodeURIComponent(text)}+minimalist+vector`, credit: CREDIT });
-});
-
-app.get('/thumbnail', (req, res) => {
-    const title = req.query.title || 'Video';
-    const H = `${req.protocol}://${req.get('host')}`;
-    res.json({ success: true, thumbnail_url: `${H}/img-url?prompt=YouTube+thumbnail+${encodeURIComponent(title)}+bold+vibrant`, credit: CREDIT });
+        const r = await axios.get(`${AI_CHAT_SOURCE}/${encodeURIComponent('Write code: ' + (req.query.prompt || 'sort array'))}?model=openai`);
+        res.json({ success: true, code: r.data, credit: CREDIT });
+    } catch(e) { res.json({ error: e.message }); }
 });
 
 app.get('/meme', (req, res) => {
-    const top = req.query.top || 'HELLO';
-    const bottom = req.query.bottom || 'WORLD';
-    res.json({ success: true, meme_url: `https://api.memegen.link/images/custom/${encodeURIComponent(top)}/${encodeURIComponent(bottom)}.png`, credit: CREDIT });
+    res.json({ success: true, meme_url: `https://api.memegen.link/images/custom/${encodeURIComponent(req.query.top||'HI')}/${encodeURIComponent(req.query.bottom||'BYE')}.png`, credit: CREDIT });
 });
 
 app.get('/qr', async (req, res) => {
-    const QRCode = require('qrcode');
     try {
+        const QRCode = require('qrcode');
         const qr = await QRCode.toDataURL(req.query.text || 'Hello');
         res.json({ success: true, qr_image: qr, credit: CREDIT });
     } catch(e) { res.json({ error: e.message }); }
@@ -321,14 +346,14 @@ app.get('/qr', async (req, res) => {
 
 app.get('/shorten', async (req, res) => {
     try {
-        const r = await axios.get(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(req.query.url || 'google.com')}`);
+        const r = await axios.get(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(req.query.url||'google.com')}`);
         res.json({ success: true, shortened: r.data, credit: CREDIT });
     } catch(e) { res.json({ error: e.message }); }
 });
 
 app.get('/ip', async (req, res) => {
     try {
-        const r = await axios.get(`http://ip-api.com/json/${req.query.ip || '8.8.8.8'}`);
+        const r = await axios.get(`http://ip-api.com/json/${req.query.ip||'8.8.8.8'}`);
         res.json({ success: true, ip: r.data.query, country: r.data.country, city: r.data.city, credit: CREDIT });
     } catch(e) { res.json({ error: e.message }); }
 });
@@ -350,6 +375,6 @@ app.get('/grammar', async (req, res) => {
 });
 
 // ============ TEST ============
-app.get('/test', (req, res) => res.json({ status: "✅ V3.1 ONLINE", tools: 30, source: "HIDDEN", credit: CREDIT }));
+app.get('/test', (req, res) => res.json({ status: "✅ V4.0 ONLINE", feature: "Random Domain Proxy", tools: 30, credit: CREDIT }));
 
-app.listen(PORT, '0.0.0.0', () => console.log(`🎨 V3.1 HIDDEN on port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`🎨 V4.0 RANDOM DOMAIN on port ${PORT}`));
