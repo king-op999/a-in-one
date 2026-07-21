@@ -11,7 +11,7 @@ app = Flask(__name__)
 
 CREDIT = "@BRONX_ULTRA"
 
-# ============ ALL APIs (UPDATED) ============
+# ============ ALL APIs ============
 BRONX_VEH2NUM_API = "https://bronx-web-api.onrender.com/api/key-bronx/veh2num"
 LEAKAPI_VEHICLE = "https://leakapi.dpdns.org/api/vehicle"
 LEAKAPI_REG = "https://leakapi.dpdns.org/vehicle-info"
@@ -27,7 +27,6 @@ def add_cors(response):
 # ============ HOME PAGE ============
 @app.route('/')
 def home():
-    base = request.host_url.rstrip('/')
     return f'''<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>🚗 BRONX RC API V8 - ALL IN ONE</title>
@@ -78,7 +77,6 @@ def get_leakapi_vehicle(rc_number):
         resp = requests.get(url, timeout=25)
         data = resp.json()
         if data:
-            # Remove proxy info if present
             if isinstance(data, dict) and '_proxy' in data:
                 del data['_proxy']
             return data
@@ -106,11 +104,9 @@ def get_bronx_veh2num(rc_number):
         url = f"{BRONX_VEH2NUM_API}?key=op&vehicle={rc_number}"
         resp = requests.get(url, timeout=20)
         data = resp.json()
-        # Remove proxy
         if isinstance(data, dict) and '_proxy' in data:
             del data['_proxy']
         
-        # Extract mobile number
         if data and data.get('mobile_number'):
             return data.get('mobile_number')
         if data and isinstance(data, dict):
@@ -131,13 +127,11 @@ def get_bronx_veh2num(rc_number):
 def get_ummym_data(rc_number):
     try:
         url = f"{UMMMYM_API}?rc={rc_number}"
-        resp = requests.get(url, timeout=35)  # Extra timeout for slow API
+        resp = requests.get(url, timeout=35)
         data = resp.json()
         if data:
-            # Remove proxy info
             if isinstance(data, dict) and '_proxy' in data:
                 del data['_proxy']
-            # Deep clean nested proxy
             if isinstance(data, dict):
                 for key in list(data.keys()):
                     if isinstance(data[key], dict) and '_proxy' in data[key]:
@@ -238,7 +232,7 @@ def rc_lookup():
             "credit": CREDIT
         }), 400
     
-    # PARALLEL FETCHING - All sources ek saath
+    # PARALLEL FETCHING
     results = {}
     
     with ThreadPoolExecutor(max_workers=6) as executor:
@@ -258,7 +252,6 @@ def rc_lookup():
             except:
                 results[source_name] = None
     
-    # Extract results
     leakapi_v = results.get('leakapi_vehicle')
     leakapi_r = results.get('leakapi_registration')
     v2n = results.get('veh2num_mobile')
@@ -268,7 +261,6 @@ def rc_lookup():
     
     response_time = round(time.time() - start_time, 2)
     
-    # Build final response
     result = {
         "status": "success",
         "rc_number": rc_number,
@@ -286,56 +278,45 @@ def rc_lookup():
         }
     }
     
-    # ============ LEAKAPI VEHICLE DATA ============
     if leakapi_v:
         result["leakapi_vehicle"] = leakapi_v
     
-    # ============ LEAKAPI REGISTRATION DATA ============
     if leakapi_r:
         result["leakapi_registration"] = leakapi_r
     
-    # ============ UMMMYM DATA ============
     if ummym:
         result["ummym"] = ummym
     
-    # ============ MOBILE NUMBER ============
     if v2n:
         result["mobile_number"] = v2n
     
-    # ============ VAHANX DATA ============
     if vx:
         vx_clean = {k: v for k, v in vx.items() if v}
         if vx_clean:
             result["vahanx_scraper"] = vx_clean
     
-    # ============ CARINFO RTO DATA ============
     if rto:
         result["carinfo_rto"] = rto
     
-    # ============ MERGED SUMMARY ============
-    # Extract best data from all sources
+    # MERGED SUMMARY
     owner_name = "N/A"
     model = "N/A"
     fuel = "N/A"
     reg_date = "N/A"
     rto_name = "N/A"
     
-    # LeakAPI se
-    if leakapi_v:
-        if isinstance(leakapi_v, dict):
-            owner_name = leakapi_v.get('owner_name') or leakapi_v.get('owner') or owner_name
-            model = leakapi_v.get('model') or leakapi_v.get('vehicle_model') or model
-            fuel = leakapi_v.get('fuel') or leakapi_v.get('fuel_type') or fuel
-            reg_date = leakapi_v.get('registration_date') or leakapi_v.get('reg_date') or reg_date
-            rto_name = leakapi_v.get('rto') or leakapi_v.get('rto_name') or rto_name
+    if leakapi_v and isinstance(leakapi_v, dict):
+        owner_name = leakapi_v.get('owner_name') or leakapi_v.get('owner') or owner_name
+        model = leakapi_v.get('model') or leakapi_v.get('vehicle_model') or model
+        fuel = leakapi_v.get('fuel') or leakapi_v.get('fuel_type') or fuel
+        reg_date = leakapi_v.get('registration_date') or leakapi_v.get('reg_date') or reg_date
+        rto_name = leakapi_v.get('rto') or leakapi_v.get('rto_name') or rto_name
     
-    # UmmmyM se
     if ummym and isinstance(ummym, dict):
         owner_name = ummym.get('owner_name') or ummym.get('owner') or owner_name
         model = ummym.get('model') or ummym.get('vehicle_model') or model
         fuel = ummym.get('fuel') or ummym.get('fuel_type') or fuel
     
-    # VahanX se
     if vx:
         owner_name = vx.get('owner_name') or owner_name
         model = vx.get('model') or model
@@ -367,13 +348,12 @@ def test():
             "1",
             "2",
             "Veh2Num Mobile",
+            "3",
             "4",
-            "5",
-            "6"
+            "5"
         ],
-        "note": "UmmmyM API slow hai (15-30 sec) - parallel fetching se manage",
-        "credit": CREDIT
-    })
+        "credit": "@BRONX_ULTRA"
+    }
 
 
 @app.errorhandler(404)
@@ -386,11 +366,4 @@ def not_found(e):
 
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 3000))
-    print(f"""
-    🚗 BRONX RC API V8 - ALL IN ONE
-    📍 Port: {port}
-    💡 Usage: /rc?num=MH02FZ0555
-    🔄 Sources: LeakAPI ×2 | Veh2Num | UmmmyM | VahanX | CarInfo
-    """)
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 10000)))
