@@ -1,698 +1,396 @@
-from flask import Flask, request, jsonify, render_template_string, session, redirect, url_for, Response
+from flask import Flask, request, jsonify
 import requests
-import json
+from bs4 import BeautifulSoup
+import re
+import os
 import time
-import hashlib
-import secrets
-from datetime import datetime, timedelta
-from functools import wraps
-from pathlib import Path
-import urllib3
-
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 app = Flask(__name__)
-app.secret_key = secrets.token_hex(32)
 
-DATA_DIR = Path("data")
-DATA_DIR.mkdir(exist_ok=True)
+CREDIT = "@BRONX_ULTRA"
 
-def load_json(filename, default=None):
-    if default is None: default = {}
-    filepath = DATA_DIR / filename
-    if filepath.exists():
-        with open(filepath, 'r') as f:
-            return json.load(f)
-    return default
+# ============ ALL APIs (UPDATED) ============
+BRONX_VEH2NUM_API = "https://bronx-web-api.onrender.com/api/key-bronx/veh2num"
+LEAKAPI_VEHICLE = "https://leakapi.dpdns.org/api/vehicle"
+LEAKAPI_REG = "https://leakapi.dpdns.org/vehicle-info"
+UMMMYM_API = "https://ummmym.onrender.com/"
 
-def save_json(filename, data):
-    filepath = DATA_DIR / filename
-    with open(filepath, 'w') as f:
-        json.dump(data, f, indent=2, default=str)
+@app.after_request
+def add_cors(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    return response
 
-# Initialize
-if not (DATA_DIR / "users.json").exists():
-    save_json("users.json", {
-        "BRONX": {
-            "password": hashlib.sha256("BRONX@2024".encode()).hexdigest(),
-            "role": "owner"
-        }
-    })
-
-if not (DATA_DIR / "keys.json").exists():
-    save_json("keys.json", {
-        "demo": {
-            "key": "demo",
-            "type": "VIP",
-            "expires": str(datetime.now() + timedelta(days=30)),
-            "daily_limit": 1000,
-            "per_minute_limit": 60,
-            "requests_today": 0,
-            "total_requests": 0,
-            "last_reset": datetime.now().strftime("%Y-%m-%d"),
-            "minute_requests": [],
-            "status": "active",
-            "created": str(datetime.now()),
-            "created_by": "system"
-        }
-    })
-
-if not (DATA_DIR / "apis.json").exists():
-    save_json("apis.json", {
-        "rc": {
-            "name": "rc",
-            "url": "https://simple-rc-info.vercel.app/rc",
-            "params": {"num": "{param}"},
-            "method": "GET",
-            "timeout": 30,
-            "status": "active",
-            "added_by": "system",
-            "created": str(datetime.now())
-        }
-    })
-
-if not (DATA_DIR / "settings.json").exists():
-    save_json("settings.json", {
-        "site_name": "BRONX Ultra OSINT",
-        "owner": "@BRONX_ULTRA",
-        "public_access": False,
-        "show_keys": False
-    })
-
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'user' not in session:
-            return redirect(url_for('login_page'))
-        return f(*args, **kwargs)
-    return decorated_function
-
-def check_api_key():
-    api_key = request.args.get('key', '') or request.headers.get('X-API-Key', '')
-    
-    if not api_key:
-        return False, "API Key Required - Contact @BRONX_ULTRA", None
-    
-    keys = load_json("keys.json")
-    
-    if api_key not in keys:
-        return False, "Invalid API Key", None
-    
-    key_data = keys[api_key]
-    
-    if key_data.get("status") != "active":
-        return False, "Key Inactive", None
-    
-    if key_data.get("expires") != "unlimited":
-        try:
-            expiry = datetime.fromisoformat(key_data["expires"])
-            if datetime.now() > expiry:
-                return False, "Key Expired", None
-        except: pass
-    
-    today = datetime.now().strftime("%Y-%m-%d")
-    if key_data.get("last_reset") != today:
-        key_data["requests_today"] = 0
-        key_data["last_reset"] = today
-        key_data["minute_requests"] = []
-    
-    daily_limit = key_data.get("daily_limit", float('inf'))
-    if isinstance(daily_limit, str):
-        daily_limit = float('inf') if daily_limit == 'inf' else int(daily_limit)
-    
-    if key_data.get("requests_today", 0) >= daily_limit:
-        return False, "Daily Limit Reached", None
-    
-    per_minute = key_data.get("per_minute_limit", float('inf'))
-    if isinstance(per_minute, str):
-        per_minute = float('inf') if per_minute == 'inf' else int(per_minute)
-    
-    current_time = time.time()
-    minute_requests = [t for t in key_data.get("minute_requests", []) if current_time - t < 60]
-    
-    if len(minute_requests) >= per_minute:
-        return False, "Rate Limit Exceeded", None
-    
-    key_data["requests_today"] = key_data.get("requests_today", 0) + 1
-    key_data["total_requests"] = key_data.get("total_requests", 0) + 1
-    minute_requests.append(current_time)
-    key_data["minute_requests"] = minute_requests
-    
-    keys[api_key] = key_data
-    save_json("keys.json", keys)
-    
-    return True, "OK", key_data
-
-# ==================== TEMPLATES ====================
-LOGIN_PAGE = '''
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BRONX Ultra OSINT - Login</title>
-    <style>
-        *{margin:0;padding:0;box-sizing:border-box}
-        body{background:#000;min-height:100vh;display:flex;justify-content:center;align-items:center;font-family:'Courier New',monospace}
-        .login-box{background:rgba(0,0,0,0.9);border:1px solid rgba(255,0,0,0.3);padding:50px 40px;width:100%;max-width:420px;box-shadow:0 0 50px rgba(255,0,0,0.1)}
-        h1{text-align:center;color:#ff0000;font-size:20px;letter-spacing:3px;margin-bottom:5px}
-        .sub{text-align:center;color:#666;font-size:10px;letter-spacing:2px;margin-bottom:30px}
-        label{color:#888;display:block;margin-bottom:8px;font-size:11px;letter-spacing:1px}
-        input{width:100%;padding:14px;background:rgba(255,0,0,0.05);border:1px solid rgba(255,0,0,0.2);color:#fff;font-size:13px;font-family:'Courier New',monospace;margin-bottom:15px}
-        input:focus{outline:none;border-color:#ff0000}
-        button{width:100%;padding:15px;background:#8b0000;color:#fff;border:none;font-size:14px;cursor:pointer;font-family:'Courier New',monospace;letter-spacing:2px;transition:0.3s}
-        button:hover{background:#ff0000;box-shadow:0 0 30px rgba(255,0,0,0.3)}
-        .error{color:#ff0000;text-align:center;padding:10px;background:rgba(255,0,0,0.1);border:1px solid rgba(255,0,0,0.2);margin-top:15px;font-size:11px}
-        .footer{text-align:center;color:#333;margin-top:20px;font-size:9px;letter-spacing:1px}
-    </style>
-</head>
-<body>
-    <div class="login-box">
-        <h1>■ BRONX ULTRA OSINT</h1>
-        <p class="sub">RESTRICTED ACCESS</p>
-        {% if error %}<div class="error">{{ error }}</div>{% endif %}
-        <form method="POST" action="/admin/login">
-            <label>USERNAME</label>
-            <input type="text" name="username" placeholder="Enter username" required>
-            <label>PASSWORD</label>
-            <input type="password" name="password" placeholder="Enter password" required>
-            <button type="submit">ACCESS PANEL</button>
-        </form>
-        <div class="footer">© @BRONX_ULTRA</div>
-    </div>
-</body>
-</html>
-'''
-
-DASHBOARD_PAGE = '''
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BRONX Ultra OSINT - Dashboard</title>
-    <style>
-        *{margin:0;padding:0;box-sizing:border-box}
-        ::-webkit-scrollbar{width:5px}
-        ::-webkit-scrollbar-track{background:#000}
-        ::-webkit-scrollbar-thumb{background:#ff0000}
-        body{background:#000;color:#fff;font-family:'Courier New',monospace;min-height:100vh}
-        .header{background:#0a0000;border-bottom:1px solid rgba(255,0,0,0.2);padding:15px 30px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:100}
-        .header h1{font-size:14px;letter-spacing:2px;color:#ff0000}
-        .header-right{display:flex;gap:15px;align-items:center}
-        .user-tag{background:rgba(255,0,0,0.1);border:1px solid rgba(255,0,0,0.2);padding:6px 15px;font-size:10px}
-        .logout-btn{background:rgba(255,0,0,0.2);color:#ff0000;padding:6px 15px;text-decoration:none;font-size:10px;border:1px solid rgba(255,0,0,0.3);transition:0.3s}
-        .logout-btn:hover{background:rgba(255,0,0,0.4)}
-        .container{max-width:1500px;margin:0 auto;padding:20px}
-        .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:15px;margin-bottom:25px}
-        .stat-card{background:#0a0a0a;border:1px solid rgba(255,0,0,0.1);padding:20px}
-        .stat-card .label{color:#666;font-size:9px;letter-spacing:2px;margin-bottom:8px}
-        .stat-card .value{font-size:28px;color:#ff0000;font-weight:bold}
-        .section{background:#0a0a0a;border:1px solid rgba(255,0,0,0.1);padding:25px;margin-bottom:20px}
-        .section-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
-        .section-header h2{font-size:13px;letter-spacing:2px;color:#ff0000}
-        .btn{padding:8px 18px;border:1px solid rgba(255,0,0,0.3);cursor:pointer;font-family:'Courier New',monospace;font-size:10px;letter-spacing:1px;transition:0.3s;background:rgba(255,0,0,0.1);color:#ff0000}
-        .btn:hover{background:rgba(255,0,0,0.3);box-shadow:0 0 15px rgba(255,0,0,0.2)}
-        .btn-green{background:rgba(0,255,0,0.1);border-color:rgba(0,255,0,0.3);color:#0f0}
-        .btn-green:hover{background:rgba(0,255,0,0.3)}
-        .btn-yellow{background:rgba(255,255,0,0.1);border-color:rgba(255,255,0,0.3);color:#ff0}
-        .btn-yellow:hover{background:rgba(255,255,0,0.3)}
-        table{width:100%;border-collapse:collapse;font-size:10px}
-        th{text-align:left;padding:12px 10px;border-bottom:1px solid rgba(255,0,0,0.1);color:#666;font-size:9px;letter-spacing:1px}
-        td{padding:12px 10px;border-bottom:1px solid rgba(255,0,0,0.05)}
-        .badge{padding:3px 10px;border:1px solid;font-size:8px;letter-spacing:1px;display:inline-block}
-        .badge-active{color:#0f0;border-color:rgba(0,255,0,0.3)}
-        .badge-inactive{color:#f00;border-color:rgba(255,0,0,0.3)}
-        .badge-vip{color:#f0f;border-color:rgba(255,0,255,0.3)}
-        code{background:rgba(255,0,0,0.1);padding:2px 8px;color:#ff0000;font-size:9px}
-        .modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);z-index:1000;justify-content:center;align-items:center}
-        .modal.active{display:flex}
-        .modal-content{background:#0a0a0a;border:1px solid rgba(255,0,0,0.2);padding:30px;width:90%;max-width:500px}
-        .modal-content h3{color:#ff0000;letter-spacing:2px;margin-bottom:20px;font-size:13px}
-        input,select{width:100%;padding:12px;margin:10px 0;background:#000;border:1px solid rgba(255,0,0,0.2);color:#fff;font-family:'Courier New',monospace;font-size:11px}
-        input:focus,select:focus{outline:none;border-color:#ff0000}
-        .modal-actions{display:flex;gap:10px;margin-top:20px;justify-content:flex-end}
-        .toast{position:fixed;top:20px;right:20px;padding:15px 25px;border:1px solid;z-index:9999;font-size:10px;letter-spacing:1px;display:none;animation:slideIn 0.3s ease}
-        .toast-success{border-color:#0f0;color:#0f0;background:rgba(0,255,0,0.1)}
-        .toast-error{border-color:#f00;color:#f00;background:rgba(255,0,0,0.1)}
-        @keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
-        .empty{text-align:center;color:#333;padding:30px;font-size:10px;letter-spacing:2px}
-        .api-url{background:#000;padding:15px;border:1px solid rgba(255,0,0,0.1);font-size:10px;letter-spacing:1px;color:#0f0;overflow-x:auto;margin-top:10px;word-break:break-all}
-        .action-btns{display:flex;gap:5px}
-        .info-text{color:#666;font-size:10px;margin-top:10px}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>■ BRONX ULTRA OSINT</h1>
-        <div class="header-right">
-            <span class="user-tag">{{ session.get('user','OWNER') }}</span>
-            <a href="/admin/logout" class="logout-btn">EXIT</a>
-        </div>
-    </div>
-    
-    <div class="container">
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="label">ACTIVE KEYS</div>
-                <div class="value">{{ active_keys }}</div>
-            </div>
-            <div class="stat-card">
-                <div class="label">TOTAL APIs</div>
-                <div class="value">{{ total_apis }}</div>
-            </div>
-            <div class="stat-card">
-                <div class="label">TOTAL REQUESTS</div>
-                <div class="value">{{ total_requests }}</div>
-            </div>
-            <div class="stat-card">
-                <div class="label">SERVER STATUS</div>
-                <div class="value" style="color:#0f0">ONLINE</div>
-            </div>
-        </div>
-        
-        <!-- API Keys -->
-        <div class="section">
-            <div class="section-header">
-                <h2>🔑 API KEYS</h2>
-                <button class="btn" onclick="openModal('keyModal')">+ CREATE KEY</button>
-            </div>
-            {% if keys %}
-            <table>
-                <thead>
-                    <tr><th>KEY</th><th>TYPE</th><th>STATUS</th><th>EXPIRES</th><th>TODAY</th><th>TOTAL</th><th>ACTIONS</th></tr>
-                </thead>
-                <tbody>
-                    {% for key_name, key_data in keys.items() %}
-                    <tr>
-                        <td><code>{{ key_name if settings.show_keys else '••••••••' }}</code></td>
-                        <td><span class="badge badge-vip">{{ key_data.type }}</span></td>
-                        <td><span class="badge badge-{{ 'active' if key_data.status=='active' else 'inactive' }}">{{ key_data.status.upper() }}</span></td>
-                        <td>{{ '∞' if key_data.expires=='unlimited' else key_data.expires[:10] }}</td>
-                        <td>{{ key_data.get('requests_today',0) }}</td>
-                        <td>{{ key_data.get('total_requests',0) }}</td>
-                        <td class="action-btns">
-                            <button class="btn btn-yellow" onclick="toggleKey('{{ key_name }}')">{{ 'OFF' if key_data.status=='active' else 'ON' }}</button>
-                            <button class="btn" onclick="deleteKey('{{ key_name }}')">DEL</button>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-            <div class="empty">NO KEYS CREATED</div>
-            {% endif %}
-        </div>
-        
-        <!-- APIs -->
-        <div class="section">
-            <div class="section-header">
-                <h2>🔗 OSINT APIs</h2>
-                <button class="btn btn-green" onclick="openModal('apiModal')">+ ADD API</button>
-            </div>
-            {% if apis %}
-            <table>
-                <thead>
-                    <tr><th>NAME</th><th>BASE URL</th><th>PARAM</th><th>FULL URL</th><th>STATUS</th><th>ACTIONS</th></tr>
-                </thead>
-                <tbody>
-                    {% for api_name, api_data in apis.items() %}
-                    <tr>
-                        <td style="color:#ff0000">{{ api_data.name.upper() }}</td>
-                        <td style="color:#888;font-size:9px;max-width:200px;overflow:hidden;text-overflow:ellipsis">{{ api_data.url }}</td>
-                        <td><code>{{ api_data.params.keys()|list|first }}</code></td>
-                        <td style="color:#0f0;font-size:9px;max-width:250px;overflow:hidden;text-overflow:ellipsis">{{ api_data.url }}?{{ api_data.params.keys()|list|first }}=VALUE</td>
-                        <td><span class="badge badge-{{ 'active' if api_data.status=='active' else 'inactive' }}">{{ api_data.status.upper() }}</span></td>
-                        <td class="action-btns">
-                            <button class="btn btn-yellow" onclick="toggleApi('{{ api_name }}')">{{ 'OFF' if api_data.status=='active' else 'ON' }}</button>
-                            <button class="btn" onclick="deleteApi('{{ api_name }}')">DEL</button>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-            <div class="empty">NO APIs ADDED - CLICK "+ ADD API" TO ADD</div>
-            {% endif %}
-        </div>
-        
-        <!-- Usage -->
-        <div class="section">
-            <div class="section-header"><h2>📡 USAGE FORMAT</h2></div>
-            <div class="api-url">{{ request.host_url }}api?key=KEY&api=API_NAME&PARAM=VALUE</div>
-            <p class="info-text">Example: {{ request.host_url }}api?key=demo&api=rc&num=MH02FZ055</p>
-            {% if apis %}
-            <p class="info-text" style="color:#ff0000;margin-top:10px">Available APIs: {{ apis.keys()|list|join(', ') }}</p>
-            {% endif %}
-        </div>
-    </div>
-    
-    <!-- Create Key Modal -->
-    <div id="keyModal" class="modal">
-        <div class="modal-content">
-            <h3>■ CREATE NEW API KEY</h3>
-            <form id="createKeyForm">
-                <input type="text" name="key_name" placeholder="KEY NAME" required>
-                <select name="key_type" required>
-                    <option value="VIP">VIP</option>
-                    <option value="PREMIUM">PREMIUM</option>
-                    <option value="OWNER">OWNER</option>
-                </select>
-                <input type="number" name="expiry_days" placeholder="EXPIRY DAYS (0=UNLIMITED)" value="30" required>
-                <input type="text" name="daily_limit" placeholder="DAILY LIMIT" value="1000" required>
-                <input type="text" name="per_minute_limit" placeholder="PER MINUTE LIMIT" value="60" required>
-                <div class="modal-actions">
-                    <button type="button" class="btn" onclick="closeModal('keyModal')">CANCEL</button>
-                    <button type="submit" class="btn btn-green">CREATE</button>
-                </div>
-            </form>
-        </div>
-    </div>
-    
-    <!-- Add API Modal -->
-    <div id="apiModal" class="modal">
-        <div class="modal-content">
-            <h3>■ ADD OSINT API</h3>
-            <p style="color:#888;font-size:10px;margin-bottom:15px">⚠ ONLY ENTER BASE URL (without ? and parameters)</p>
-            <form id="createApiForm">
-                <label style="color:#888;font-size:10px">API NAME (short name like: rc, vehicle)</label>
-                <input type="text" name="api_name" placeholder="e.g., rc" required>
-                <label style="color:#888;font-size:10px">BASE URL (without ?param=)</label>
-                <input type="text" name="api_url" placeholder="e.g., https://api.example.com/rc" required>
-                <label style="color:#888;font-size:10px">PARAMETER KEY (e.g., num, vehicle, id)</label>
-                <input type="text" name="param_key" placeholder="e.g., num" required>
-                <label style="color:#888;font-size:10px">TIMEOUT (seconds)</label>
-                <input type="number" name="timeout" placeholder="30" value="30" required>
-                <div class="modal-actions">
-                    <button type="button" class="btn" onclick="closeModal('apiModal')">CANCEL</button>
-                    <button type="submit" class="btn btn-green">ADD API</button>
-                </div>
-            </form>
-        </div>
-    </div>
-    
-    <div id="toast" class="toast"></div>
-    
-    <script>
-        function showToast(msg,type){
-            const t=document.getElementById('toast');
-            t.textContent=msg;t.className='toast toast-'+type;t.style.display='block';
-            setTimeout(()=>t.style.display='none',3000);
-        }
-        function openModal(id){document.getElementById(id).classList.add('active')}
-        function closeModal(id){document.getElementById(id).classList.remove('active')}
-        
-        document.getElementById('createKeyForm').addEventListener('submit',async(e)=>{
-            e.preventDefault();
-            const fd=new FormData(e.target);
-            const r=await fetch('/admin/keys/create',{method:'POST',body:fd});
-            const d=await r.json();
-            showToast(d.success?d.message:d.error,d.success?'success':'error');
-            if(d.success){closeModal('keyModal');setTimeout(()=>location.reload(),1000)}
-        });
-        
-        document.getElementById('createApiForm').addEventListener('submit',async(e)=>{
-            e.preventDefault();
-            const fd=new FormData(e.target);
-            const r=await fetch('/admin/apis/add',{method:'POST',body:fd});
-            const d=await r.json();
-            showToast(d.success?d.message:d.error,d.success?'success':'error');
-            if(d.success){closeModal('apiModal');setTimeout(()=>location.reload(),1000)}
-        });
-        
-        async function toggleKey(name){
-            const r=await fetch('/admin/keys/toggle/'+name,{method:'POST'});
-            const d=await r.json();showToast('Key '+d.status,'success');
-            setTimeout(()=>location.reload(),500);
-        }
-        async function deleteKey(name){
-            if(confirm('DELETE: '+name+'?')){
-                const r=await fetch('/admin/keys/delete/'+name,{method:'DELETE'});
-                const d=await r.json();showToast(d.message,'success');
-                setTimeout(()=>location.reload(),500);
-            }
-        }
-        async function toggleApi(name){
-            const r=await fetch('/admin/apis/toggle/'+name,{method:'POST'});
-            const d=await r.json();showToast('API '+d.status,'success');
-            setTimeout(()=>location.reload(),500);
-        }
-        async function deleteApi(name){
-            if(confirm('DELETE: '+name+'?')){
-                const r=await fetch('/admin/apis/delete/'+name,{method:'DELETE'});
-                const d=await r.json();showToast(d.message,'success');
-                setTimeout(()=>location.reload(),500);
-            }
-        }
-    </script>
-</body>
-</html>
-'''
-
-# ==================== PUBLIC ROUTES ====================
+# ============ HOME PAGE ============
 @app.route('/')
 def home():
-    settings = load_json("settings.json")
-    return jsonify({
-        "server": "BRONX Ultra OSINT",
-        "status": "ONLINE ✅",
-        "owner": "@BRONX_ULTRA",
-        "access": "RESTRICTED",
-        "contact": "Contact @BRONX_ULTRA for API key"
-    })
+    base = request.host_url.rstrip('/')
+    return f'''<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>🚗 BRONX RC API V8 - ALL IN ONE</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{background:#000a14;color:#d0d8f0;font-family:'Rajdhani',sans-serif;min-height:100vh;display:flex;justify-content:center;align-items:center;padding:20px}}
+body::before{{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(0,150,255,.06),transparent 60%),radial-gradient(ellipse at 80% 100%,rgba(139,0,255,.04),transparent 60%);pointer-events:none;z-index:0}}
+.card{{background:rgba(5,15,35,.9);border:1px solid rgba(0,150,255,.1);border-radius:20px;padding:30px;max-width:700px;width:100%;text-align:center;position:relative;z-index:1;backdrop-filter:blur(20px)}}
+h1{{font-family:'Orbitron',sans-serif;font-size:28px;background:linear-gradient(90deg,#0096ff,#00d4ff,#8b00ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:6px}}
+.badge{{display:inline-block;background:rgba(0,255,136,.06);color:#00ff88;padding:4px 14px;border-radius:20px;font-size:10px;border:1px solid rgba(0,255,136,.12);margin:4px}}
+.section{{background:rgba(0,0,0,.5);border:1px solid rgba(0,150,255,.08);border-radius:12px;padding:16px;margin:14px 0;text-align:left}}
+code{{color:#00ff88;font-family:monospace;font-size:11px;word-break:break-all;display:block;margin:6px 0;background:rgba(0,0,0,.3);padding:8px;border-radius:6px}}
+input{{width:100%;padding:14px;background:rgba(0,0,0,.5);border:1px solid rgba(0,150,255,.08);border-radius:10px;color:#fff;font-size:14px;outline:none;margin:8px 0;font-family:'Rajdhani',sans-serif}}
+input:focus{{border-color:#0096ff}}
+button{{width:100%;padding:14px;background:linear-gradient(135deg,#0096ff,#0066cc);color:#fff;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:14px;margin:6px 0;transition:.3s}}
+button:hover{{transform:scale(1.02);box-shadow:0 0 25px rgba(0,150,255,.2)}}
+.result{{background:rgba(0,0,0,.5);border:1px solid rgba(0,255,136,.08);border-radius:10px;padding:14px;margin-top:10px;text-align:left;display:none;max-height:600px;overflow:auto}}
+.result.show{{display:block}}
+pre{{color:#00ff88;font-family:monospace;font-size:10px;white-space:pre-wrap}}
+</style></head>
+<body>
+<div class="card">
+<h1>🚗 BRONX RC API V8</h1>
+<p style="color:#667;font-size:12px">ALL-IN-ONE • LeakAPI • Veh2Num • UmmmyM • CarInfo</p>
+<div style="margin:10px 0">
+<span class="badge">👤 Owner</span><span class="badge">📱 Mobile</span><span class="badge">🚗 Vehicle</span><span class="badge">🏢 RTO</span><span class="badge">🛡️ Insurance</span>
+</div>
+<div class="section"><p style="color:#0096ff;font-weight:700">🔗 API Endpoint</p><code>GET /rc?num=MH02FZ0555</code></div>
+<input type="text" id="rcInput" placeholder="RC Number (e.g., MH02FZ0555)">
+<button onclick="lookup()">🔍 LOOKUP ALL SOURCES</button>
+<div class="result" id="result"><pre id="resultData"></pre></div>
+<p style="color:#667;font-size:10px;margin-top:14px">{CREDIT} | V8 ALL-IN-ONE</p>
+</div>
+<script>
+async function lookup(){{
+var n=document.getElementById('rcInput').value.trim();if(!n)return alert('Enter RC!');
+var d=document.getElementById('result'),p=document.getElementById('resultData');
+d.classList.add('show');p.style.color='#ffb400';p.textContent='🔍 Fetching from all sources...';
+try{{var r=await fetch('/rc?num='+encodeURIComponent(n));var j=await r.json();p.style.color='#00ff88';p.textContent=JSON.stringify(j,null,2)}}catch(e){{p.style.color='#ff3366';p.textContent='❌ '+e.message}}}}
+</script>
+</body></html>'''
 
-@app.route('/api')
-def api_handler():
-    valid, message, key_data = check_api_key()
-    if not valid:
-        return Response(json.dumps({"error": message}, indent=2), mimetype='application/json', status=401)
-    
-    api_name = request.args.get('api', '')
-    apis = load_json("apis.json")
-    
-    print(f"[DEBUG] API Request - Key: valid, API: {api_name}, Available APIs: {list(apis.keys())}")
-    
-    if not api_name or api_name not in apis:
-        return Response(json.dumps({
-            "error": f"API '{api_name}' not found",
-            "available_apis": list(apis.keys())
-        }, indent=2), mimetype='application/json', status=404)
-    
-    api_config = apis[api_name]
-    
-    if api_config.get("status") != "active":
-        return Response(json.dumps({"error": "API inactive"}, indent=2), mimetype='application/json', status=403)
-    
-    # Get parameter value
-    param_value = None
-    param_key = None
-    for pk in api_config.get("params", {}).keys():
-        param_key = pk
-        param_value = request.args.get(pk)
-        break
-    
-    if not param_value:
-        return Response(json.dumps({
-            "error": f"Parameter '{param_key}' required",
-            "usage": f"/api?key=KEY&api={api_name}&{param_key}=VALUE"
-        }, indent=2), mimetype='application/json', status=400)
-    
+# ============ SOURCE 1: LeakAPI /api/vehicle ============
+def get_leakapi_vehicle(rc_number):
     try:
-        # Build URL - API URL already has base, we add params
-        url = api_config["url"]
-        params = {param_key: param_value}
+        url = f"{LEAKAPI_VEHICLE}?vehicle={rc_number}"
+        resp = requests.get(url, timeout=25)
+        data = resp.json()
+        if data:
+            # Remove proxy info if present
+            if isinstance(data, dict) and '_proxy' in data:
+                del data['_proxy']
+            return data
+        return None
+    except:
+        return None
+
+# ============ SOURCE 2: LeakAPI /vehicle-info ============
+def get_leakapi_reg(rc_number):
+    try:
+        url = f"{LEAKAPI_REG}?registration_number={rc_number}"
+        resp = requests.get(url, timeout=25)
+        data = resp.json()
+        if data:
+            if isinstance(data, dict) and '_proxy' in data:
+                del data['_proxy']
+            return data
+        return None
+    except:
+        return None
+
+# ============ SOURCE 3: Bronx Veh2Num (Mobile) ============
+def get_bronx_veh2num(rc_number):
+    try:
+        url = f"{BRONX_VEH2NUM_API}?key=op&vehicle={rc_number}"
+        resp = requests.get(url, timeout=20)
+        data = resp.json()
+        # Remove proxy
+        if isinstance(data, dict) and '_proxy' in data:
+            del data['_proxy']
         
-        print(f"[DEBUG] Fetching: {url} with params: {params}")
+        # Extract mobile number
+        if data and data.get('mobile_number'):
+            return data.get('mobile_number')
+        if data and isinstance(data, dict):
+            for key in ['mobile_number', 'mobile', 'phone', 'number', 'owner_number', 'result']:
+                if data.get(key):
+                    val = data[key]
+                    if isinstance(val, str) and val.isdigit() and len(val) == 10:
+                        return val
+                    elif isinstance(val, dict):
+                        for k in ['mobile', 'phone', 'number']:
+                            if val.get(k):
+                                return str(val[k])
+        return None
+    except:
+        return None
+
+# ============ SOURCE 4: UmmmyM (SLOW - 30 sec timeout) ============
+def get_ummym_data(rc_number):
+    try:
+        url = f"{UMMMYM_API}?rc={rc_number}"
+        resp = requests.get(url, timeout=35)  # Extra timeout for slow API
+        data = resp.json()
+        if data:
+            # Remove proxy info
+            if isinstance(data, dict) and '_proxy' in data:
+                del data['_proxy']
+            # Deep clean nested proxy
+            if isinstance(data, dict):
+                for key in list(data.keys()):
+                    if isinstance(data[key], dict) and '_proxy' in data[key]:
+                        del data[key]['_proxy']
+            return data
+        return None
+    except:
+        return None
+
+# ============ SOURCE 5: VahanX Scraper ============
+def get_vahanx_data(rc_number):
+    url = f"https://vahanx.in/rc-search/{rc_number}"
+    headers = {"User-Agent": "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36"}
+    try:
+        resp = requests.get(url, headers=headers, timeout=20)
+        soup = BeautifulSoup(resp.text, "html.parser")
+        text = soup.get_text()
         
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': '*/*'
+        def gv(label):
+            try:
+                span = soup.find("span", string=label)
+                if span:
+                    div = span.find_parent("div")
+                    if div:
+                        p = div.find("p")
+                        if p:
+                            return p.get_text(strip=True)
+                return None
+            except:
+                return None
+        
+        father = gv("Father's Name")
+        if not father:
+            so = re.search(r'(S/O|D/O|W/O)\s*SH\.?\s*([A-Za-z\s]+)', text, re.IGNORECASE)
+            if so:
+                father = f"{so.group(1)} SH. {so.group(2).strip()}"
+        
+        return {
+            "father_name": father,
+            "owner_name": gv("Owner Name"),
+            "phone": gv("Phone"),
+            "address": gv("Address"),
+            "city": gv("City Name"),
+            "rto": gv("Registered RTO"),
+            "reg_date": gv("Registration Date"),
+            "model": gv("Model Name"),
+            "fuel": gv("Fuel Type"),
+            "insurance_company": gv("Insurance Company"),
+            "insurance_upto": gv("Insurance Upto"),
+            "fitness_upto": gv("Fitness Upto"),
+            "tax_upto": gv("Tax Upto"),
+            "puc_upto": gv("PUC Upto"),
+        }
+    except:
+        return {}
+
+# ============ SOURCE 6: CarInfo RTO ============
+def get_carinfo_rto(rc_number):
+    url = f"https://www.carinfo.app/rto-vehicle-registration-detail/rto-details/{rc_number}"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        resp = requests.get(url, headers=headers, timeout=20)
+        soup = BeautifulSoup(resp.text, "html.parser")
+        info = {}
+        match = re.match(r'^([A-Z]{2}\d{2})', rc_number)
+        if match:
+            info["rto_code"] = match.group(1)
+        for table in soup.find_all('table'):
+            for row in table.find_all('tr'):
+                cells = row.find_all('td')
+                if len(cells) >= 2:
+                    k = cells[0].get_text(strip=True).lower()
+                    v = cells[1].get_text(strip=True)
+                    if 'state' in k:
+                        info['state'] = v
+                    elif 'address' in k:
+                        info['rto_address'] = v
+                    elif 'phone' in k:
+                        info['rto_phone'] = v
+                    elif 'email' in k:
+                        info['rto_email'] = v
+                    elif 'city' in k:
+                        info['rto_city'] = v
+        return info if len(info) > 1 else None
+    except:
+        return None
+
+# ============ MAIN RC ENDPOINT ============
+@app.route('/rc')
+def rc_lookup():
+    start_time = time.time()
+    rc_number = request.args.get('num', '').strip().upper().replace(' ', '').replace('-', '')
+    
+    if not rc_number:
+        return jsonify({
+            "status": "error",
+            "message": "Missing RC number",
+            "credit": CREDIT
+        }), 400
+    
+    # PARALLEL FETCHING - All sources ek saath
+    results = {}
+    
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        futures = {
+            executor.submit(get_leakapi_vehicle, rc_number): 'leakapi_vehicle',
+            executor.submit(get_leakapi_reg, rc_number): 'leakapi_registration',
+            executor.submit(get_bronx_veh2num, rc_number): 'veh2num_mobile',
+            executor.submit(get_ummym_data, rc_number): 'ummym',
+            executor.submit(get_vahanx_data, rc_number): 'vahanx',
+            executor.submit(get_carinfo_rto, rc_number): 'carinfo_rto',
         }
         
-        response = requests.get(url, params=params, headers=headers, timeout=api_config.get("timeout", 30), verify=False)
-        
-        print(f"[DEBUG] Response Status: {response.status_code}")
-        
-        if response.status_code == 200:
+        for future in as_completed(futures):
+            source_name = futures[future]
             try:
-                result = response.json()
+                results[source_name] = future.result(timeout=40)
             except:
-                result = {"data": response.text}
-        else:
-            result = {"error": f"Upstream returned status {response.status_code}", "raw": response.text[:500]}
-        
-        # Add credit
-        if isinstance(result, dict):
-            result["_credit"] = "@BRONX_ULTRA"
-        
-        return Response(json.dumps(result, indent=2, ensure_ascii=False), mimetype='application/json; charset=utf-8')
-        
-    except requests.exceptions.Timeout:
-        return Response(json.dumps({"error": "Upstream API timeout"}, indent=2), mimetype='application/json', status=504)
-    except Exception as e:
-        return Response(json.dumps({"error": str(e)}, indent=2), mimetype='application/json', status=500)
-
-# ==================== ADMIN ROUTES ====================
-@app.route('/admin')
-def login_page():
-    if 'user' in session:
-        return redirect(url_for('dashboard'))
-    return render_template_string(LOGIN_PAGE)
-
-@app.route('/admin/login', methods=['POST'])
-def login():
-    username = request.form.get('username', '')
-    password = request.form.get('password', '')
-    users = load_json("users.json")
+                results[source_name] = None
     
-    if username in users:
-        hashed = hashlib.sha256(password.encode()).hexdigest()
-        if users[username]["password"] == hashed:
-            session['user'] = username
-            session['role'] = users[username].get("role", "owner")
-            return redirect(url_for('dashboard'))
+    # Extract results
+    leakapi_v = results.get('leakapi_vehicle')
+    leakapi_r = results.get('leakapi_registration')
+    v2n = results.get('veh2num_mobile')
+    ummym = results.get('ummym')
+    vx = results.get('vahanx')
+    rto = results.get('carinfo_rto')
     
-    return render_template_string(LOGIN_PAGE, error="ACCESS DENIED")
-
-@app.route('/admin/dashboard')
-@login_required
-def dashboard():
-    keys = load_json("keys.json")
-    apis = load_json("apis.json")
-    settings = load_json("settings.json")
+    response_time = round(time.time() - start_time, 2)
     
-    active_keys = sum(1 for k in keys.values() if k.get("status") == "active")
-    total_apis = len(apis)
-    total_requests = sum(k.get("total_requests", 0) for k in keys.values())
-    
-    return render_template_string(DASHBOARD_PAGE,
-        keys=keys, apis=apis, settings=settings,
-        active_keys=active_keys, total_apis=total_apis,
-        total_requests=total_requests)
-
-@app.route('/admin/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('login_page'))
-
-# ==================== KEY MANAGEMENT ====================
-@app.route('/admin/keys/create', methods=['POST'])
-@login_required
-def create_key():
-    key_name = request.form.get('key_name', '').strip()
-    key_type = request.form.get('key_type', 'VIP')
-    expiry_days = request.form.get('expiry_days', '30')
-    daily_limit = request.form.get('daily_limit', '1000')
-    per_minute_limit = request.form.get('per_minute_limit', '60')
-    
-    if not key_name:
-        return jsonify({"error": "Key name required"}), 400
-    
-    keys = load_json("keys.json")
-    if key_name in keys:
-        return jsonify({"error": "Key exists"}), 400
-    
-    try:
-        expiry_days = int(expiry_days)
-        daily_limit = float('inf') if daily_limit.lower() == 'unlimited' else int(daily_limit)
-        per_minute_limit = float('inf') if per_minute_limit.lower() == 'unlimited' else int(per_minute_limit)
-    except:
-        return jsonify({"error": "Invalid values"}), 400
-    
-    keys[key_name] = {
-        "key": key_name,
-        "type": key_type,
-        "expires": str(datetime.now() + timedelta(days=expiry_days)) if expiry_days > 0 else "unlimited",
-        "daily_limit": daily_limit,
-        "per_minute_limit": per_minute_limit,
-        "requests_today": 0,
-        "total_requests": 0,
-        "last_reset": datetime.now().strftime("%Y-%m-%d"),
-        "minute_requests": [],
-        "status": "active",
-        "created": str(datetime.now()),
-        "created_by": session.get('user')
+    # Build final response
+    result = {
+        "status": "success",
+        "rc_number": rc_number,
+        "credit": CREDIT,
+        "powered_by": "@BRONX_ULTRA",
+        "response_time_seconds": response_time,
+        "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "sources": {
+            "leakapi_vehicle": "✅" if leakapi_v else "❌",
+            "leakapi_registration": "✅" if leakapi_r else "❌",
+            "veh2num_mobile": "✅" if v2n else "❌",
+            "ummym": "✅" if ummym else "❌",
+            "vahanx_scraper": "✅" if vx else "❌",
+            "carinfo_rto": "✅" if rto else "❌"
+        }
     }
     
-    save_json("keys.json", keys)
-    return jsonify({"success": True, "message": f"Key {key_name} Created"})
-
-@app.route('/admin/keys/delete/<key_name>', methods=['DELETE'])
-@login_required
-def delete_key(key_name):
-    keys = load_json("keys.json")
-    if key_name in keys:
-        del keys[key_name]
-        save_json("keys.json", keys)
-        return jsonify({"success": True, "message": "Deleted"})
-    return jsonify({"error": "Not found"}), 404
-
-@app.route('/admin/keys/toggle/<key_name>', methods=['POST'])
-@login_required
-def toggle_key(key_name):
-    keys = load_json("keys.json")
-    if key_name in keys:
-        keys[key_name]["status"] = "inactive" if keys[key_name].get("status") == "active" else "active"
-        save_json("keys.json", keys)
-        return jsonify({"success": True, "status": keys[key_name]["status"]})
-    return jsonify({"error": "Not found"}), 404
-
-# ==================== API MANAGEMENT ====================
-@app.route('/admin/apis/add', methods=['POST'])
-@login_required
-def add_api():
-    api_name = request.form.get('api_name', '').strip().lower()
-    api_url = request.form.get('api_url', '').strip().rstrip('/')
-    param_key = request.form.get('param_key', '').strip()
-    timeout = request.form.get('timeout', '30')
+    # ============ LEAKAPI VEHICLE DATA ============
+    if leakapi_v:
+        result["leakapi_vehicle"] = leakapi_v
     
-    # Remove ? and anything after from URL
-    if '?' in api_url:
-        api_url = api_url.split('?')[0]
+    # ============ LEAKAPI REGISTRATION DATA ============
+    if leakapi_r:
+        result["leakapi_registration"] = leakapi_r
     
-    if not all([api_name, api_url, param_key]):
-        return jsonify({"error": "All fields required"}), 400
+    # ============ UMMMYM DATA ============
+    if ummym:
+        result["ummym"] = ummym
     
-    print(f"[DEBUG] Adding API - Name: {api_name}, URL: {api_url}, Param: {param_key}")
+    # ============ MOBILE NUMBER ============
+    if v2n:
+        result["mobile_number"] = v2n
     
-    apis = load_json("apis.json")
-    if api_name in apis:
-        return jsonify({"error": "API name already exists"}), 400
+    # ============ VAHANX DATA ============
+    if vx:
+        vx_clean = {k: v for k, v in vx.items() if v}
+        if vx_clean:
+            result["vahanx_scraper"] = vx_clean
     
-    apis[api_name] = {
-        "name": api_name,
-        "url": api_url,
-        "params": {param_key: "{param}"},
-        "method": "GET",
-        "timeout": int(timeout) if timeout.isdigit() else 30,
-        "status": "active",
-        "added_by": session.get('user'),
-        "created": str(datetime.now())
+    # ============ CARINFO RTO DATA ============
+    if rto:
+        result["carinfo_rto"] = rto
+    
+    # ============ MERGED SUMMARY ============
+    # Extract best data from all sources
+    owner_name = "N/A"
+    model = "N/A"
+    fuel = "N/A"
+    reg_date = "N/A"
+    rto_name = "N/A"
+    
+    # LeakAPI se
+    if leakapi_v:
+        if isinstance(leakapi_v, dict):
+            owner_name = leakapi_v.get('owner_name') or leakapi_v.get('owner') or owner_name
+            model = leakapi_v.get('model') or leakapi_v.get('vehicle_model') or model
+            fuel = leakapi_v.get('fuel') or leakapi_v.get('fuel_type') or fuel
+            reg_date = leakapi_v.get('registration_date') or leakapi_v.get('reg_date') or reg_date
+            rto_name = leakapi_v.get('rto') or leakapi_v.get('rto_name') or rto_name
+    
+    # UmmmyM se
+    if ummym and isinstance(ummym, dict):
+        owner_name = ummym.get('owner_name') or ummym.get('owner') or owner_name
+        model = ummym.get('model') or ummym.get('vehicle_model') or model
+        fuel = ummym.get('fuel') or ummym.get('fuel_type') or fuel
+    
+    # VahanX se
+    if vx:
+        owner_name = vx.get('owner_name') or owner_name
+        model = vx.get('model') or model
+        fuel = vx.get('fuel') or fuel
+        reg_date = vx.get('reg_date') or reg_date
+        rto_name = vx.get('rto') or rto_name
+    
+    result["📋_summary"] = {
+        "owner_name": owner_name,
+        "mobile_number": v2n or "N/A",
+        "model": model,
+        "fuel_type": fuel,
+        "registration_date": reg_date,
+        "rto_name": rto_name
     }
     
-    save_json("apis.json", apis)
-    print(f"[DEBUG] API Added Successfully: {api_name}")
-    return jsonify({"success": True, "message": f"API '{api_name}' Added! Use: /api?key=KEY&api={api_name}&{param_key}=VALUE"})
+    return jsonify(result)
 
-@app.route('/admin/apis/delete/<api_name>', methods=['DELETE'])
-@login_required
-def delete_api(api_name):
-    apis = load_json("apis.json")
-    if api_name in apis:
-        del apis[api_name]
-        save_json("apis.json", apis)
-        return jsonify({"success": True, "message": "Deleted"})
-    return jsonify({"error": "Not found"}), 404
 
-@app.route('/admin/apis/toggle/<api_name>', methods=['POST'])
-@login_required
-def toggle_api(api_name):
-    apis = load_json("apis.json")
-    if api_name in apis:
-        apis[api_name]["status"] = "inactive" if apis[api_name].get("status") == "active" else "active"
-        save_json("apis.json", apis)
-        return jsonify({"success": True, "status": apis[api_name]["status"]})
-    return jsonify({"error": "Not found"}), 404
+# ============ HEALTH CHECK ============
+@app.route('/health')
+@app.route('/test')
+def test():
+    return jsonify({
+        "status": "✅ BRONX RC API V8 ONLINE",
+        "version": "8.0 ALL-IN-ONE",
+        "endpoint": "/rc?num=MH02FZ0555",
+        "sources": [
+            "1",
+            "2",
+            "Veh2Num Mobile",
+            "4",
+            "5",
+            "6"
+        ],
+        "note": "UmmmyM API slow hai (15-30 sec) - parallel fetching se manage",
+        "credit": CREDIT
+    })
+
+
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({
+        "error": "Not found",
+        "home": "/",
+        "api": "/rc?num=RC_NUMBER"
+    }), 404
+
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000, debug=True)
+    port = int(os.environ.get('PORT', 3000))
+    print(f"""
+    🚗 BRONX RC API V8 - ALL IN ONE
+    📍 Port: {port}
+    💡 Usage: /rc?num=MH02FZ0555
+    🔄 Sources: LeakAPI ×2 | Veh2Num | UmmmyM | VahanX | CarInfo
+    """)
+    app.run(host='0.0.0.0', port=port)
