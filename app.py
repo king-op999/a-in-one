@@ -353,7 +353,7 @@ def test():
             "5"
         ],
         "credit": "@BRONX_ULTRA"
-    }
+    })
 
 
 @app.errorhandler(404)
